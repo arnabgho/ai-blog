@@ -115,3 +115,72 @@ export function extractLineRange(
   const lines = markdown.split('\n');
   return lines.slice(startLine - 1, endLine).join('\n');
 }
+
+/**
+ * Calculate line number from DOM position
+ * This is a simplified version - in production you'd want more robust offset calculation
+ */
+export function calculateLineFromDOMPosition(
+  range: Range,
+  containerElement: HTMLElement,
+  markdown: string
+): number {
+  // Get the text content before the range
+  let offset = 0;
+
+  // Walk up the DOM tree and calculate offset
+  let node: Node | null = range.startContainer;
+
+  // First, add the offset within the start container
+  offset += range.startOffset;
+
+  // Then walk up and accumulate offsets from previous siblings
+  while (node && node !== containerElement) {
+    const parent = node.parentNode;
+    if (!parent) break;
+
+    const siblings = Array.from(parent.childNodes);
+    const index = siblings.indexOf(node as ChildNode);
+
+    for (let i = 0; i < index; i++) {
+      offset += siblings[i].textContent?.length || 0;
+    }
+
+    node = parent;
+  }
+
+  // Convert character offset to line number
+  return offsetToLine(markdown, offset);
+}
+
+/**
+ * Extract context around a line number
+ */
+export function extractContextAroundLine(
+  markdown: string,
+  lineNumber: number,
+  contextChars: number = 250
+): string {
+  const lineOffset = lineToOffset(markdown, lineNumber);
+  const startOffset = Math.max(0, lineOffset - contextChars);
+  const endOffset = Math.min(markdown.length, lineOffset + contextChars);
+
+  return markdown.slice(startOffset, endOffset);
+}
+
+/**
+ * Insert image markdown at a specific line
+ */
+export function insertImageAtLine(
+  markdown: string,
+  lineNumber: number,
+  imageMarkdown: string
+): string {
+  const lines = markdown.split('\n');
+
+  // Insert after the specified line (or at the beginning if line 0)
+  const insertIndex = Math.max(0, Math.min(lineNumber, lines.length));
+  lines.splice(insertIndex, 0, '', imageMarkdown, '');
+
+  return lines.join('\n');
+}

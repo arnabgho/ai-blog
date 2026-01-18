@@ -15,6 +15,7 @@ import {
   createVersion,
   calculateMetadata,
 } from '@/lib/db';
+import { insertImageAtLine } from '@/lib/markdown-utils';
 import type { BlogPost, PostVersion, FeedbackItem } from '@/lib/types';
 
 export default function EditorPage() {
@@ -157,6 +158,12 @@ export default function EditorPage() {
     });
   }
 
+  function handleInsertImage(imageMarkdown: string, lineNumber: number) {
+    const newMarkdown = insertImageAtLine(markdown, lineNumber, imageMarkdown);
+    setMarkdown(newMarkdown);
+    // Auto-save will trigger automatically from the markdown change
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -225,6 +232,7 @@ export default function EditorPage() {
             feedbackMode={feedbackMode}
             feedbackItems={feedbackItems}
             onAddFeedback={(item) => setFeedbackItems([...feedbackItems, item])}
+            onInsertImage={handleInsertImage}
           />
         </div>
       </div>

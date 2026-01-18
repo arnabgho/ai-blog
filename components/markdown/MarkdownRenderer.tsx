@@ -34,13 +34,23 @@ export function MarkdownRenderer({ content, className = '' }: MarkdownRendererPr
               </code>
             );
           },
-          img: ({ src, alt }) => (
-            <img
-              src={src}
-              alt={alt || ''}
-              className="rounded-lg my-4 max-w-full h-auto"
-            />
-          ),
+          img: ({ node, src, alt, ...props }: any) => {
+            // Ensure src exists and is valid
+            if (!src) return null;
+
+            return (
+              <img
+                src={src}
+                alt={alt || ''}
+                className="rounded-lg my-4 max-w-full h-auto"
+                loading="lazy"
+                onError={(e) => {
+                  console.error('Image failed to load:', src.slice(0, 100));
+                  e.currentTarget.style.display = 'none';
+                }}
+              />
+            );
+          },
           a: ({ href, children }) => (
             <a
               href={href}

@@ -4,13 +4,19 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { MarkdownRenderer } from '@/components/markdown/MarkdownRenderer';
 import { FeedbackPopover } from './FeedbackPopover';
 import { FeedbackHighlight } from './FeedbackHighlight';
+import { ImageRequestPopover } from './ImageRequestPopover';
 import type { FeedbackItem } from '@/lib/types';
+import {
+  calculateLineFromDOMPosition,
+  extractContextAroundLine,
+} from '@/lib/markdown-utils';
 
 interface PreviewPaneProps {
   content: string;
   feedbackMode: boolean;
   feedbackItems: FeedbackItem[];
   onAddFeedback: (feedback: FeedbackItem) => void;
+  onInsertImage?: (imageMarkdown: string, lineNumber: number) => void;
   className?: string;
 }
 
@@ -26,16 +32,25 @@ export function PreviewPane({
   feedbackMode,
   feedbackItems,
   onAddFeedback,
+  onInsertImage,
   className = '',
 }: PreviewPaneProps) {
   const [selection, setSelection] = useState<Selection | null>(null);
   const [showPopover, setShowPopover] = useState(false);
+  const [showImagePopover, setShowImagePopover] = useState(false);
+  const [imageRequest, setImageRequest] = useState<{
+    position: { x: number; y: number };
+    lineNumber: number;
+    context: string;
+  } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!feedbackMode) {
       setSelection(null);
       setShowPopover(false);
+      setShowImagePopover(false);
+      setImageRequest(null);
     }
   }, [feedbackMode]);
 
@@ -105,6 +120,62 @@ export function PreviewPane({
     window.getSelection()?.removeAllRanges();
   }, []);
 
+  const handleClick = useCallback(
+    (e: React.MouseEvent) => {
+      if (!feedbackMode || !containerRef.current) return;
+
+      // Detect if it's a right-click or Cmd+Click
+      if (e.button === 2 || (e.button === 0 && e.metaKey)) {
+        e.preventDefault();
+
+        // Get click position
+        const clickX = e.clientX;
+        const clickY = e.clientY;
+
+        // Find the closest text node to the click
+        const range = document.caretRangeFromPoint
+          ? document.caretRangeFromPoint(clickX, clickY)
+          : null;
+
+        if (!range) return;
+
+        // Calculate line number in markdown
+        const lineNumber = calculateLineFromDOMPosition(
+          range,
+          containerRef.current,
+          content
+        );
+
+        // Extract context around that line
+        const context = extractContextAroundLine(content, lineNumber, 250);
+
+        setImageRequest({
+          position: { x: clickX, y: clickY },
+          lineNumber,
+          context,
+        });
+        setShowImagePopover(true);
+      }
+    },
+    [feedbackMode, content]
+  );
+
+  const handleInsertImage = useCallback(
+    (imageMarkdown: string, lineNumber: number) => {
+      if (onInsertImage) {
+        onInsertImage(imageMarkdown, lineNumber);
+      }
+      setShowImagePopover(false);
+      setImageRequest(null);
+    },
+    [onInsertImage]
+  );
+
+  const handleCancelImage = useCallback(() => {
+    setShowImagePopover(false);
+    setImageRequest(null);
+  }, []);
+
   // Render content with highlights
   const renderContentWithHighlights = () => {
     if (feedbackItems.length === 0) {
@@ -121,6 +192,8 @@ export function PreviewPane({
       <div
         ref={containerRef}
         onMouseUp={handleMouseUp}
+        onClick={handleClick}
+        onContextMenu={handleClick}
         className={`${className} ${feedbackMode ? 'cursor-text select-text' : ''}`}
       >
         {renderContentWithHighlights()}
@@ -133,6 +206,17 @@ export function PreviewPane({
         onSubmit={handleSubmitFeedback}
         onCancel={handleCancelFeedback}
       />
+
+      {showImagePopover && imageRequest && (
+        <ImageRequestPopover
+          isOpen={showImagePopover}
+          position={imageRequest.position}
+          context={imageRequest.context}
+          lineNumber={imageRequest.lineNumber}
+          onInsert={handleInsertImage}
+          onCancel={handleCancelImage}
+        />
+      )}
     </>
   );
 }
