@@ -101,7 +101,18 @@ export function PreviewPane({
           const allWordsFound = words.every(word => window.includes(word));
 
           if (allWordsFound) {
-            markdownOffset = i;
+            // Find where the FIRST word actually appears in the window
+            const firstWordPos = window.indexOf(words[0]);
+
+            // The actual position in the full content
+            markdownOffset = i + firstWordPos;
+
+            console.log('Found match:', {
+              windowStart: i,
+              firstWordPos,
+              finalOffset: markdownOffset,
+              firstWord: words[0]
+            });
             break;
           }
         }
@@ -115,10 +126,9 @@ export function PreviewPane({
         context = selectedText;
         insertOffset = content.length; // Fallback to end
       } else {
-        // Found the approximate location
+        // Found the actual location of the first word
         insertOffset = markdownOffset;
-        const midOffset = markdownOffset + Math.floor(selectedText.length / 2);
-        context = extractContextAroundOffset(content, midOffset, 500);
+        context = selectedText; // Use only the selected text, nothing more
 
         console.log('Image mode selection:', {
           selectedText: selectedText.slice(0, 50),
