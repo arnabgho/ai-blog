@@ -239,27 +239,22 @@ export function insertImageAtOffset(
     imageMarkdown: imageMarkdown.slice(0, 50)
   });
 
-  // Find the end of the current line (insert after the line, not in the middle)
-  let endOfLine = insertOffset;
-  while (endOfLine < markdown.length && markdown[endOfLine] !== '\n') {
-    endOfLine++;
+  // Find the START of the current line (insert before the line, not in the middle)
+  let startOfLine = insertOffset;
+  while (startOfLine > 0 && markdown[startOfLine - 1] !== '\n') {
+    startOfLine--;
   }
 
-  // Insert: newline + empty line + image + empty line
-  const before = markdown.slice(0, endOfLine);
-  const after = markdown.slice(endOfLine);
+  // Insert: before line + image + empty line + line content
+  const before = markdown.slice(0, startOfLine);
+  const after = markdown.slice(startOfLine);
 
   // Add spacing around the image
-  let insertion = '\n\n' + imageMarkdown + '\n\n';
+  let insertion = imageMarkdown + '\n\n';
 
-  // If we're at the very end, don't add trailing newlines
-  if (endOfLine === markdown.length) {
-    insertion = '\n\n' + imageMarkdown;
-  }
-
-  // If we're at the very beginning, don't add leading newlines
-  if (endOfLine === 0) {
-    insertion = imageMarkdown + '\n\n';
+  // If we're NOT at the very beginning, add leading newline
+  if (startOfLine > 0) {
+    insertion = '\n' + insertion;
   }
 
   return before + insertion + after;

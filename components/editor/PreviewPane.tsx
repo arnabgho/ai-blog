@@ -78,37 +78,51 @@ export function PreviewPane({
     const endOffset = startOffset + selectedText.length;
 
     if (imageMode) {
-      // IMAGE MODE: Extract context around selection, show image popover
-      // Find the selected text in the markdown source (not using rendered HTML offsets)
-      let markdownOffset = content.indexOf(selectedText);
+      // IMAGE MODE: Use word matching to find location in markdown
+      // Extract 7 significant words (length > 3) from selection
+      const words = selectedText
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(w => w.length > 3 && !/^[^a-z]+$/.test(w)) // Filter out short words and non-letter words
+        .slice(0, 7); // Take first 7 significant words
 
-      // If exact match not found, try with first 100 chars (handles markdown formatting)
-      if (markdownOffset === -1 && selectedText.length > 100) {
-        const searchText = selectedText.slice(0, 100);
-        markdownOffset = content.indexOf(searchText);
-      }
+      console.log('Searching for words:', words);
 
-      // If still not found, try first 50 chars
-      if (markdownOffset === -1 && selectedText.length > 50) {
-        const searchText = selectedText.slice(0, 50);
-        markdownOffset = content.indexOf(searchText);
+      // Find the first location where all these words appear nearby in the markdown
+      let markdownOffset = -1;
+
+      if (words.length > 0) {
+        for (let i = 0; i < content.length - 50; i++) {
+          // Check a window of text around this position
+          const windowSize = Math.max(selectedText.length + 300, 500);
+          const window = content.slice(i, i + windowSize).toLowerCase();
+
+          // Check if all words are found in this window
+          const allWordsFound = words.every(word => window.includes(word));
+
+          if (allWordsFound) {
+            markdownOffset = i;
+            break;
+          }
+        }
       }
 
       let context: string;
       let insertOffset: number;
 
       if (markdownOffset === -1) {
-        console.warn('Selected text not found in markdown');
+        console.warn('Could not find location using word matching. Words searched:', words);
         context = selectedText;
-        insertOffset = content.length;  // Insert at end if not found
+        insertOffset = content.length; // Fallback to end
       } else {
-        // Found the text - extract context around it
+        // Found the approximate location
+        insertOffset = markdownOffset;
         const midOffset = markdownOffset + Math.floor(selectedText.length / 2);
         context = extractContextAroundOffset(content, midOffset, 500);
-        // Insert right after the selected text
-        insertOffset = markdownOffset + selectedText.length;
+
         console.log('Image mode selection:', {
           selectedText: selectedText.slice(0, 50),
+          wordsMatched: words,
           markdownOffset,
           insertOffset,
           contentLength: content.length
