@@ -68,7 +68,6 @@ export async function POST(req: Request) {
                 { role: 'user', content: prompt },
               ],
               temperature: 0.7,
-              maxTokens: 2000,
             });
 
             let regeneratedText = '';

@@ -224,12 +224,9 @@ export function PreviewPane({
         // Extract context centered on the ACTUAL click position
         const context = extractContextAroundOffset(content, clickOffset, 250);
 
-        // Calculate line number for insertion (keep this for insertion logic)
-        const lineNumber = offsetToLine(content, clickOffset);
-
         setImageRequest({
           position: { x: clickX, y: clickY },
-          lineNumber,
+          insertOffset: clickOffset,
           context,
         });
         setShowImagePopover(true);

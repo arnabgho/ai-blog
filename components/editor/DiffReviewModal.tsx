@@ -1,7 +1,10 @@
 'use client';
 
+import { useMemo } from 'react';
 import { Button } from '@/components/ui/button';
-import { MarkdownRenderer } from '@/components/markdown/MarkdownRenderer';
+import { parseDiff, Diff, Hunk } from 'react-diff-view';
+import { formatLines, diffLines } from 'unidiff';
+import 'react-diff-view/style/index.css';
 
 interface DiffReviewModalProps {
   isOpen: boolean;
@@ -18,6 +21,28 @@ export function DiffReviewModal({
   onAccept,
   onReject,
 }: DiffReviewModalProps) {
+  const diffText = useMemo(() => {
+    // Create unified diff format
+    const oldLines = beforeContent.split('\n');
+    const newLines = afterContent.split('\n');
+
+    // Generate diff using unidiff
+    const diffResult = diffLines(oldLines, newLines);
+    return formatLines(diffResult, { context: 3 });
+  }, [beforeContent, afterContent]);
+
+  const files = useMemo(() => {
+    // Parse the diff into a format react-diff-view can use
+    if (!diffText) return [];
+
+    try {
+      return parseDiff(diffText, { nearbySequences: 'zip' });
+    } catch (error) {
+      console.error('Error parsing diff:', error);
+      return [];
+    }
+  }, [diffText]);
+
   if (!isOpen) return null;
 
   return (
@@ -31,30 +56,55 @@ export function DiffReviewModal({
         <div className="border-b border-border px-6 py-4">
           <h2 className="text-2xl font-bold">Review Changes</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Compare the original content (left) with AI-regenerated content (right)
+            Review the AI-regenerated changes below
           </p>
         </div>
 
-        {/* Side-by-Side Content */}
-        <div className="flex-1 flex overflow-hidden">
-          {/* Before (Original) */}
-          <div className="w-1/2 border-r border-border flex flex-col">
-            <div className="bg-destructive/10 px-4 py-2 border-b border-border">
-              <p className="font-semibold text-sm">Before (Original)</p>
-            </div>
-            <div className="flex-1 overflow-auto p-6">
-              <MarkdownRenderer content={beforeContent} />
-            </div>
-          </div>
+        {/* Diff View */}
+        <div className="flex-1 overflow-auto">
+          <style jsx global>{`
+            /* Only override colors for better readability */
+            .diff-gutter-insert {
+              background-color: hsl(142 76% 36% / 0.2) !important;
+            }
 
-          {/* After (Regenerated) */}
-          <div className="w-1/2 flex flex-col">
-            <div className="bg-primary/10 px-4 py-2 border-b border-border">
-              <p className="font-semibold text-sm">After (Regenerated)</p>
-            </div>
-            <div className="flex-1 overflow-auto p-6">
-              <MarkdownRenderer content={afterContent} />
-            </div>
+            .diff-code-insert {
+              background-color: hsl(142 76% 36% / 0.15) !important;
+            }
+
+            .diff-gutter-delete {
+              background-color: hsl(0 72% 51% / 0.2) !important;
+            }
+
+            .diff-code-delete {
+              background-color: hsl(0 72% 51% / 0.15) !important;
+            }
+
+            .diff-code {
+              color: hsl(var(--foreground)) !important;
+            }
+          `}</style>
+          <div className="p-6">
+            {files.map((file, index) => (
+              <Diff
+                key={index}
+                viewType="split"
+                diffType={file.type}
+                hunks={file.hunks}
+              >
+                {(hunks) =>
+                  hunks.map((hunk) => (
+                    <Hunk key={hunk.content} hunk={hunk} />
+                  ))
+                }
+              </Diff>
+            ))}
+
+            {files.length === 0 && (
+              <div className="text-center text-muted-foreground py-12">
+                No changes detected
+              </div>
+            )}
           </div>
         </div>
 

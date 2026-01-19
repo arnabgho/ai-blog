@@ -50,7 +50,6 @@ Return ONLY the JSON array, no other text.`;
         },
       ],
       temperature: 0.8,
-      maxTokens: 1000,
     });
 
     // Parse the response text as JSON
