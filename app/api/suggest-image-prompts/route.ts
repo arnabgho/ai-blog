@@ -18,13 +18,19 @@ export async function POST(req: Request) {
 
     const prompt = `You are helping create compelling images for a blog post.
 
-ARTICLE CONTEXT:
+USER SELECTED THIS TEXT:
 """
-${context}
+${context.slice(0, 300)}
 """
 
+The user wants to generate an image to illustrate this specific text.
 Generate 3 diverse, visually interesting image prompts that would enhance this content.
-Each should be 1-2 sentences describing a specific, concrete image.
+Each should be 1-2 sentences describing a specific, concrete image that directly relates to the selected text.
+
+Focus on:
+- Visual elements mentioned or implied in the selected text
+- Concepts and themes that could be illustrated
+- Scenes or objects that would help readers understand the content
 
 Return as JSON array with format:
 [

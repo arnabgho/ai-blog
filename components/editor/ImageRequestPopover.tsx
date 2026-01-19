@@ -13,8 +13,8 @@ interface ImageRequestPopoverProps {
   isOpen: boolean;
   position: { x: number; y: number };
   context: string;
-  lineNumber: number;
-  onInsert: (imageMarkdown: string, lineNumber: number) => void;
+  insertOffset: number;
+  onInsert: (imageMarkdown: string, insertOffset: number) => void;
   onCancel: () => void;
 }
 
@@ -22,7 +22,7 @@ export function ImageRequestPopover({
   isOpen,
   position,
   context,
-  lineNumber,
+  insertOffset,
   onInsert,
   onCancel,
 }: ImageRequestPopoverProps) {
@@ -61,7 +61,7 @@ export function ImageRequestPopover({
       const response = await fetch('/api/suggest-image-prompts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ context, lineNumber }),
+        body: JSON.stringify({ context, clickLine: insertOffset }),
       });
 
       if (!response.ok) {
@@ -117,7 +117,7 @@ export function ImageRequestPopover({
     // Add cache-busting timestamp to force preview refresh
     const imageUrl = `${generatedImage}?t=${Date.now()}`;
     const imageMarkdown = `![AI-generated: ${selectedPrompt}](${imageUrl})`;
-    onInsert(imageMarkdown, lineNumber);
+    onInsert(imageMarkdown, insertOffset);
     onCancel();
   }
 

@@ -15,7 +15,7 @@ import {
   createVersion,
   calculateMetadata,
 } from '@/lib/db';
-import { insertImageAtLine } from '@/lib/markdown-utils';
+import { insertImageAtOffset } from '@/lib/markdown-utils';
 import type { BlogPost, PostVersion, FeedbackItem } from '@/lib/types';
 
 export default function EditorPage() {
@@ -27,9 +27,11 @@ export default function EditorPage() {
   const [version, setVersion] = useState<PostVersion | null>(null);
   const [markdown, setMarkdown] = useState('');
   const [feedbackMode, setFeedbackMode] = useState(false);
+  const [imageMode, setImageMode] = useState(false);
   const [feedbackItems, setFeedbackItems] = useState<FeedbackItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [hasRegeneratedBefore, setHasRegeneratedBefore] = useState(false);
+  const [isFeedbackQueueMinimized, setIsFeedbackQueueMinimized] = useState(false);
 
   const leftPaneRef = useRef<HTMLDivElement>(null);
   const rightPaneRef = useRef<HTMLDivElement>(null);
@@ -112,7 +114,15 @@ export default function EditorPage() {
   }, []);
 
   function toggleFeedbackMode() {
-    setFeedbackMode(!feedbackMode);
+    const newFeedbackMode = !feedbackMode;
+    setFeedbackMode(newFeedbackMode);
+    if (newFeedbackMode) setImageMode(false); // Disable image mode when enabling feedback
+  }
+
+  function toggleImageMode() {
+    const newImageMode = !imageMode;
+    setImageMode(newImageMode);
+    if (newImageMode) setFeedbackMode(false); // Disable feedback mode when enabling image
   }
 
   async function handleRegenerateAll() {
@@ -158,8 +168,10 @@ export default function EditorPage() {
     });
   }
 
-  function handleInsertImage(imageMarkdown: string, lineNumber: number) {
-    const newMarkdown = insertImageAtLine(markdown, lineNumber, imageMarkdown);
+  function handleInsertImage(imageMarkdown: string, insertOffset: number) {
+    console.log('Inserting image at offset', insertOffset, '- total length:', markdown.length);
+    const newMarkdown = insertImageAtOffset(markdown, insertOffset, imageMarkdown);
+    console.log('Image inserted, new length:', newMarkdown.length, 'old length:', markdown.length);
     setMarkdown(newMarkdown);
     // Auto-save will trigger automatically from the markdown change
   }
@@ -199,6 +211,12 @@ export default function EditorPage() {
           >
             {feedbackMode ? '✓ Feedback Mode' : 'Enter Feedback Mode'}
           </Button>
+          <Button
+            variant={imageMode ? 'accent' : 'outline'}
+            onClick={toggleImageMode}
+          >
+            {imageMode ? '✨ Image Mode' : 'Enter Image Mode'}
+          </Button>
         </div>
       </div>
 
@@ -230,6 +248,7 @@ export default function EditorPage() {
           <PreviewPane
             content={markdown}
             feedbackMode={feedbackMode}
+            imageMode={imageMode}
             feedbackItems={feedbackItems}
             onAddFeedback={(item) => setFeedbackItems([...feedbackItems, item])}
             onInsertImage={handleInsertImage}
@@ -239,19 +258,33 @@ export default function EditorPage() {
 
       {/* Feedback Sidebar (shown when in feedback mode) */}
       {feedbackMode && (
-        <div className="fixed right-0 top-0 h-full w-80 bg-background border-l border-border shadow-2xl flex flex-col">
-          <div className="p-4 border-b border-border">
-            <h2 className="text-lg font-semibold">
-              Feedback Queue ({feedbackItems.length})
-            </h2>
+        <div
+          className={`fixed right-0 top-0 h-full bg-background border-l border-border shadow-2xl flex flex-col transition-all duration-300 ${
+            isFeedbackQueueMinimized ? 'w-12' : 'w-80'
+          }`}
+        >
+          <div className="p-4 border-b border-border flex items-center justify-between">
+            {!isFeedbackQueueMinimized && (
+              <h2 className="text-lg font-semibold">
+                Feedback Queue ({feedbackItems.length})
+              </h2>
+            )}
+            <button
+              onClick={() => setIsFeedbackQueueMinimized(!isFeedbackQueueMinimized)}
+              className="text-muted-foreground hover:text-foreground transition-colors"
+              title={isFeedbackQueueMinimized ? 'Expand Queue' : 'Minimize Queue'}
+            >
+              {isFeedbackQueueMinimized ? '→' : '←'}
+            </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-4">
-            {feedbackItems.length === 0 ? (
-              <p className="text-muted-foreground text-center py-8">
-                No feedback yet. Select text to start.
-              </p>
-            ) : (
+          {!isFeedbackQueueMinimized && (
+            <div className="flex-1 overflow-y-auto p-4">
+              {feedbackItems.length === 0 ? (
+                <p className="text-muted-foreground text-center py-8">
+                  No feedback yet. Select text to start.
+                </p>
+              ) : (
               <div className="space-y-3">
                 {feedbackItems.map((item, index) => {
                   const itemProgress = progress.get(item.id);
@@ -303,10 +336,11 @@ export default function EditorPage() {
                   );
                 })}
               </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
-          {feedbackItems.length > 0 && (
+          {!isFeedbackQueueMinimized && feedbackItems.length > 0 && (
             <div className="p-4 border-t border-border">
               <Button
                 variant="primary"

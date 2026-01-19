@@ -117,15 +117,14 @@ export function extractLineRange(
 }
 
 /**
- * Calculate line number from DOM position
- * This is a simplified version - in production you'd want more robust offset calculation
+ * Calculate character offset from DOM position
+ * Returns the exact character position in the markdown where the user clicked
  */
-export function calculateLineFromDOMPosition(
+export function calculateOffsetFromDOMPosition(
   range: Range,
   containerElement: HTMLElement,
   markdown: string
 ): number {
-  // Get the text content before the range
   let offset = 0;
 
   // Walk up the DOM tree and calculate offset
@@ -149,12 +148,41 @@ export function calculateLineFromDOMPosition(
     node = parent;
   }
 
-  // Convert character offset to line number
+  return offset;
+}
+
+/**
+ * Calculate line number from DOM position
+ * This is a simplified version - in production you'd want more robust offset calculation
+ */
+export function calculateLineFromDOMPosition(
+  range: Range,
+  containerElement: HTMLElement,
+  markdown: string
+): number {
+  const offset = calculateOffsetFromDOMPosition(range, containerElement, markdown);
   return offsetToLine(markdown, offset);
 }
 
 /**
+ * Extract context around a specific character offset
+ * This is more accurate than extractContextAroundLine because it centers
+ * on the EXACT click position, not just the line start
+ */
+export function extractContextAroundOffset(
+  markdown: string,
+  offset: number,
+  contextChars: number = 250
+): string {
+  const startOffset = Math.max(0, offset - contextChars);
+  const endOffset = Math.min(markdown.length, offset + contextChars);
+
+  return markdown.slice(startOffset, endOffset);
+}
+
+/**
  * Extract context around a line number
+ * @deprecated Use extractContextAroundOffset() for more accurate context extraction
  */
 export function extractContextAroundLine(
   markdown: string,
@@ -180,7 +208,59 @@ export function insertImageAtLine(
 
   // Insert after the specified line (or at the beginning if line 0)
   const insertIndex = Math.max(0, Math.min(lineNumber, lines.length));
+
+  console.log('insertImageAtLine:', {
+    lineNumber,
+    insertIndex,
+    totalLines: lines.length,
+    imageMarkdown: imageMarkdown.slice(0, 50)
+  });
+
   lines.splice(insertIndex, 0, '', imageMarkdown, '');
 
   return lines.join('\n');
+}
+
+/**
+ * Insert image markdown at a specific character offset
+ */
+export function insertImageAtOffset(
+  markdown: string,
+  offset: number,
+  imageMarkdown: string
+): string {
+  // Ensure offset is within bounds
+  const insertOffset = Math.max(0, Math.min(offset, markdown.length));
+
+  console.log('insertImageAtOffset:', {
+    offset,
+    insertOffset,
+    markdownLength: markdown.length,
+    imageMarkdown: imageMarkdown.slice(0, 50)
+  });
+
+  // Find the end of the current line (insert after the line, not in the middle)
+  let endOfLine = insertOffset;
+  while (endOfLine < markdown.length && markdown[endOfLine] !== '\n') {
+    endOfLine++;
+  }
+
+  // Insert: newline + empty line + image + empty line
+  const before = markdown.slice(0, endOfLine);
+  const after = markdown.slice(endOfLine);
+
+  // Add spacing around the image
+  let insertion = '\n\n' + imageMarkdown + '\n\n';
+
+  // If we're at the very end, don't add trailing newlines
+  if (endOfLine === markdown.length) {
+    insertion = '\n\n' + imageMarkdown;
+  }
+
+  // If we're at the very beginning, don't add leading newlines
+  if (endOfLine === 0) {
+    insertion = imageMarkdown + '\n\n';
+  }
+
+  return before + insertion + after;
 }

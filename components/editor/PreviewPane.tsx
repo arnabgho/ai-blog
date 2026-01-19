@@ -7,16 +7,18 @@ import { FeedbackHighlight } from './FeedbackHighlight';
 import { ImageRequestPopover } from './ImageRequestPopover';
 import type { FeedbackItem } from '@/lib/types';
 import {
-  calculateLineFromDOMPosition,
-  extractContextAroundLine,
+  calculateOffsetFromDOMPosition,
+  extractContextAroundOffset,
+  offsetToLine,
 } from '@/lib/markdown-utils';
 
 interface PreviewPaneProps {
   content: string;
   feedbackMode: boolean;
+  imageMode: boolean;
   feedbackItems: FeedbackItem[];
   onAddFeedback: (feedback: FeedbackItem) => void;
-  onInsertImage?: (imageMarkdown: string, lineNumber: number) => void;
+  onInsertImage?: (imageMarkdown: string, insertOffset: number) => void;
   className?: string;
 }
 
@@ -30,6 +32,7 @@ interface Selection {
 export function PreviewPane({
   content,
   feedbackMode,
+  imageMode,
   feedbackItems,
   onAddFeedback,
   onInsertImage,
@@ -40,22 +43,23 @@ export function PreviewPane({
   const [showImagePopover, setShowImagePopover] = useState(false);
   const [imageRequest, setImageRequest] = useState<{
     position: { x: number; y: number };
-    lineNumber: number;
+    insertOffset: number;
     context: string;
   } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (!feedbackMode) {
+    if (!feedbackMode && !imageMode) {
       setSelection(null);
       setShowPopover(false);
       setShowImagePopover(false);
       setImageRequest(null);
     }
-  }, [feedbackMode]);
+  }, [feedbackMode, imageMode]);
 
   const handleMouseUp = useCallback(() => {
-    if (!feedbackMode || !containerRef.current) return;
+    if (!feedbackMode && !imageMode) return;
+    if (!containerRef.current) return;
 
     const windowSelection = window.getSelection();
     if (!windowSelection || windowSelection.toString().trim().length === 0) {
@@ -65,7 +69,6 @@ export function PreviewPane({
     const selectedText = windowSelection.toString().trim();
 
     // Calculate character offsets in the markdown content
-    // This is a simplified approach - in production you'd want more robust offset calculation
     const range = windowSelection.getRangeAt(0);
     const preSelectionRange = range.cloneRange();
     preSelectionRange.selectNodeContents(containerRef.current);
@@ -74,21 +77,69 @@ export function PreviewPane({
     const startOffset = preSelectionRange.toString().length;
     const endOffset = startOffset + selectedText.length;
 
-    // Get position for popover
-    const rect = range.getBoundingClientRect();
-    const position = {
-      x: rect.left + rect.width / 2 - 150, // Center popover
-      y: rect.bottom + 10, // Below selection
-    };
+    if (imageMode) {
+      // IMAGE MODE: Extract context around selection, show image popover
+      // Find the selected text in the markdown source (not using rendered HTML offsets)
+      let markdownOffset = content.indexOf(selectedText);
 
-    setSelection({
-      text: selectedText,
-      startOffset,
-      endOffset,
-      position,
-    });
-    setShowPopover(true);
-  }, [feedbackMode]);
+      // If exact match not found, try with first 100 chars (handles markdown formatting)
+      if (markdownOffset === -1 && selectedText.length > 100) {
+        const searchText = selectedText.slice(0, 100);
+        markdownOffset = content.indexOf(searchText);
+      }
+
+      // If still not found, try first 50 chars
+      if (markdownOffset === -1 && selectedText.length > 50) {
+        const searchText = selectedText.slice(0, 50);
+        markdownOffset = content.indexOf(searchText);
+      }
+
+      let context: string;
+      let insertOffset: number;
+
+      if (markdownOffset === -1) {
+        console.warn('Selected text not found in markdown');
+        context = selectedText;
+        insertOffset = content.length;  // Insert at end if not found
+      } else {
+        // Found the text - extract context around it
+        const midOffset = markdownOffset + Math.floor(selectedText.length / 2);
+        context = extractContextAroundOffset(content, midOffset, 500);
+        // Insert right after the selected text
+        insertOffset = markdownOffset + selectedText.length;
+        console.log('Image mode selection:', {
+          selectedText: selectedText.slice(0, 50),
+          markdownOffset,
+          insertOffset,
+          contentLength: content.length
+        });
+      }
+
+      // Position popover in center (modal style, not below selection)
+      setImageRequest({
+        position: { x: window.innerWidth / 2, y: window.innerHeight / 2 },
+        insertOffset,
+        context,
+      });
+      setShowImagePopover(true);
+
+    } else if (feedbackMode) {
+      // FEEDBACK MODE: Show feedback popover
+      const rect = range.getBoundingClientRect();
+      const position = {
+        x: rect.left + rect.width / 2 - 150, // Center popover
+        y: rect.bottom + 10, // Below selection
+      };
+
+      setSelection({
+        text: selectedText,
+        startOffset,
+        endOffset,
+        position,
+      });
+      setShowPopover(true);
+    }
+  }, [feedbackMode, imageMode, content]);
 
   const handleSubmitFeedback = useCallback(
     (comment: string) => {
@@ -139,15 +190,18 @@ export function PreviewPane({
 
         if (!range) return;
 
-        // Calculate line number in markdown
-        const lineNumber = calculateLineFromDOMPosition(
+        // Calculate the actual character offset where user clicked
+        const clickOffset = calculateOffsetFromDOMPosition(
           range,
           containerRef.current,
           content
         );
 
-        // Extract context around that line
-        const context = extractContextAroundLine(content, lineNumber, 250);
+        // Extract context centered on the ACTUAL click position
+        const context = extractContextAroundOffset(content, clickOffset, 250);
+
+        // Calculate line number for insertion (keep this for insertion logic)
+        const lineNumber = offsetToLine(content, clickOffset);
 
         setImageRequest({
           position: { x: clickX, y: clickY },
@@ -161,9 +215,9 @@ export function PreviewPane({
   );
 
   const handleInsertImage = useCallback(
-    (imageMarkdown: string, lineNumber: number) => {
+    (imageMarkdown: string, insertOffset: number) => {
       if (onInsertImage) {
-        onInsertImage(imageMarkdown, lineNumber);
+        onInsertImage(imageMarkdown, insertOffset);
       }
       setShowImagePopover(false);
       setImageRequest(null);
@@ -194,7 +248,7 @@ export function PreviewPane({
         onMouseUp={handleMouseUp}
         onClick={handleClick}
         onContextMenu={handleClick}
-        className={`${className} ${feedbackMode ? 'cursor-text select-text' : ''}`}
+        className={`${className} ${feedbackMode || imageMode ? 'cursor-text select-text' : ''}`}
       >
         {renderContentWithHighlights()}
       </div>
@@ -212,7 +266,7 @@ export function PreviewPane({
           isOpen={showImagePopover}
           position={imageRequest.position}
           context={imageRequest.context}
-          lineNumber={imageRequest.lineNumber}
+          insertOffset={imageRequest.insertOffset}
           onInsert={handleInsertImage}
           onCancel={handleCancelImage}
         />
