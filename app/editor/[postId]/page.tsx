@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import confetti from 'canvas-confetti';
 import { Button } from '@/components/ui/button';
 import { PreviewPane } from '@/components/editor/PreviewPane';
+import { DiffReviewModal } from '@/components/editor/DiffReviewModal';
 import { useRegenerate } from '@/hooks/useRegenerate';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -34,6 +35,7 @@ export default function EditorPage() {
   const [isFeedbackQueueMinimized, setIsFeedbackQueueMinimized] = useState(false);
   const [pendingMarkdown, setPendingMarkdown] = useState<string | null>(null);
   const [preRegenerationMarkdown, setPreRegenerationMarkdown] = useState<string | null>(null);
+  const [showDiffModal, setShowDiffModal] = useState(false);
 
   const leftPaneRef = useRef<HTMLDivElement>(null);
   const rightPaneRef = useRef<HTMLDivElement>(null);
@@ -130,20 +132,17 @@ export default function EditorPage() {
   async function handleRegenerateAll() {
     if (feedbackItems.length === 0 || !post || !version) return;
 
-    // Store current state for potential rollback
+    // Store current state for comparison
     setPreRegenerationMarkdown(markdown);
-    setHasRegeneratedBefore(true);
 
     await regenerate(markdown, feedbackItems, async (newMarkdown) => {
-      // Store pending instead of immediately applying
+      // Store pending and show modal
       setPendingMarkdown(newMarkdown);
-
-      // Don't create version yet - wait for confirmation
-      // Don't clear feedback items yet
+      setShowDiffModal(true);
     });
   }
 
-  async function handleConfirmChanges() {
+  async function handleAcceptChanges() {
     if (!pendingMarkdown || !version || !post) return;
 
     // Apply the changes
@@ -172,24 +171,27 @@ export default function EditorPage() {
     setFeedbackItems([]);
     setFeedbackMode(false);
 
-    // Clear pending states
+    // Clear states and close modal
     setPendingMarkdown(null);
     setPreRegenerationMarkdown(null);
+    setShowDiffModal(false);
 
-    // Celebrate first regeneration
-    if (hasRegeneratedBefore) {
+    // Celebrate
+    if (!hasRegeneratedBefore) {
       confetti({
         particleCount: 100,
         spread: 70,
         origin: { y: 0.6 },
       });
+      setHasRegeneratedBefore(true);
     }
   }
 
-  function handleDenyChanges() {
-    // Discard pending changes, keep original
+  function handleRejectChanges() {
+    // Discard pending changes
     setPendingMarkdown(null);
     setPreRegenerationMarkdown(null);
+    setShowDiffModal(false);
     // markdown state unchanged
   }
 
@@ -215,36 +217,6 @@ export default function EditorPage() {
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      {/* Confirmation Banner */}
-      {pendingMarkdown && (
-        <div className="fixed top-0 left-0 right-0 bg-accent/90 backdrop-blur-sm border-b border-border z-50 px-6 py-4">
-          <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
-            <div>
-              <p className="font-semibold text-lg">Regeneration Complete</p>
-              <p className="text-sm text-muted-foreground">
-                Review the changes below. Confirm to apply or Deny to keep original content.
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                onClick={handleDenyChanges}
-                className="border-destructive text-destructive hover:bg-destructive/10"
-              >
-                Deny Changes
-              </Button>
-              <Button
-                variant="primary"
-                onClick={handleConfirmChanges}
-                className="gradient-shimmer"
-              >
-                Confirm Changes
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Toolbar */}
       <div className="border-b border-border px-6 py-4 flex items-center justify-between bg-muted/30">
         <div className="flex items-center gap-4">
@@ -284,12 +256,9 @@ export default function EditorPage() {
           className="w-2/5 border-r border-border overflow-y-auto p-6"
         >
           <textarea
-            value={pendingMarkdown || markdown}
-            onChange={(e) => !pendingMarkdown && setMarkdown(e.target.value)}
-            disabled={!!pendingMarkdown}
-            className={`w-full h-full min-h-full resize-none bg-transparent font-mono text-sm focus:outline-none text-foreground ${
-              pendingMarkdown ? 'opacity-50 cursor-not-allowed' : ''
-            }`}
+            value={markdown}
+            onChange={(e) => setMarkdown(e.target.value)}
+            className="w-full h-full min-h-full resize-none bg-transparent font-mono text-sm focus:outline-none text-foreground"
             placeholder="Start writing your markdown here..."
             spellCheck={false}
           />
@@ -304,9 +273,9 @@ export default function EditorPage() {
           }`}
         >
           <PreviewPane
-            content={pendingMarkdown || markdown}
-            feedbackMode={feedbackMode && !pendingMarkdown}
-            imageMode={imageMode && !pendingMarkdown}
+            content={markdown}
+            feedbackMode={feedbackMode}
+            imageMode={imageMode}
             feedbackItems={feedbackItems}
             onAddFeedback={(item) => setFeedbackItems([...feedbackItems, item])}
             onInsertImage={handleInsertImage}
@@ -415,6 +384,15 @@ export default function EditorPage() {
           )}
         </div>
       )}
+
+      {/* Diff Review Modal */}
+      <DiffReviewModal
+        isOpen={showDiffModal}
+        beforeContent={preRegenerationMarkdown || ''}
+        afterContent={pendingMarkdown || ''}
+        onAccept={handleAcceptChanges}
+        onReject={handleRejectChanges}
+      />
     </div>
   );
 }
