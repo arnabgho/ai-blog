@@ -42,7 +42,7 @@ Return as JSON array with format:
 Return ONLY the JSON array, no other text.`;
 
     const result = await generateText({
-      model: anthropic('claude-sonnet-4-0'),
+      model: anthropic('claude-opus-4-5'),
       messages: [
         {
           role: 'user',

@@ -62,7 +62,7 @@ export async function POST(req: Request) {
 
             // Stream the regeneration from Claude
             const result = streamText({
-              model: anthropic('claude-sonnet-4-0'),
+              model: anthropic('claude-opus-4-5'),
               messages: [
                 { role: 'system', content: SYSTEM_PROMPT },
                 { role: 'user', content: prompt },
