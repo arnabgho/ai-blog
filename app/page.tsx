@@ -4,8 +4,17 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { v4 as uuidv4 } from 'uuid';
 import { Button } from '@/components/ui/button';
-import { getAllPosts, createPost, createVersion, calculateMetadata } from '@/lib/db';
+import {
+  getAllPosts,
+  createPost,
+  createVersion,
+  calculateMetadata,
+  deletePost,
+  deleteVersion,
+  getPostVersions,
+} from '@/lib/db';
 import type { BlogPost } from '@/lib/types';
+import { Trash2 } from 'lucide-react';
 
 export default function Home() {
   const [posts, setPosts] = useState<BlogPost[]>([]);
@@ -73,6 +82,30 @@ export default function Home() {
     }
   }
 
+  async function handleDeletePost(postId: string, postTitle: string) {
+    const confirmed = confirm(`Delete "${postTitle}"? This cannot be undone.`);
+    if (!confirmed) return;
+
+    try {
+      // Get all versions for this post
+      const versions = await getPostVersions(postId);
+
+      // Delete all versions (cascades to feedback sessions)
+      for (const version of versions) {
+        await deleteVersion(version.id);
+      }
+
+      // Delete the post record
+      await deletePost(postId);
+
+      // Update UI state
+      setPosts(posts.filter((p) => p.id !== postId));
+    } catch (error) {
+      console.error('Error deleting post:', error);
+      alert('Failed to delete post. Please try again.');
+    }
+  }
+
   function formatDate(timestamp: number) {
     return new Date(timestamp).toLocaleDateString('en-US', {
       month: 'short',
@@ -123,13 +156,25 @@ export default function Home() {
             {posts.map((post) => (
               <div
                 key={post.id}
-                className="border border-border rounded-lg p-6 hover:border-primary transition-colors cursor-pointer bg-muted/30"
+                className="border border-border rounded-lg p-6 hover:border-primary transition-colors cursor-pointer bg-muted/30 relative group"
                 onClick={() => router.push(`/editor/${post.id}`)}
               >
-                <h2 className="text-2xl font-semibold mb-2">{post.title}</h2>
+                <h2 className="text-2xl font-semibold mb-2 pr-12">{post.title}</h2>
                 <p className="text-muted-foreground text-sm">
                   Updated {formatDate(post.updatedAt)}
                 </p>
+
+                {/* Delete button */}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeletePost(post.id, post.title);
+                  }}
+                  className="absolute top-4 right-4 p-2 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-destructive/10 hover:text-destructive transition-all"
+                  aria-label="Delete post"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             ))}
           </div>

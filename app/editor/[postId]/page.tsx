@@ -32,6 +32,8 @@ export default function EditorPage() {
   const [loading, setLoading] = useState(true);
   const [hasRegeneratedBefore, setHasRegeneratedBefore] = useState(false);
   const [isFeedbackQueueMinimized, setIsFeedbackQueueMinimized] = useState(false);
+  const [pendingMarkdown, setPendingMarkdown] = useState<string | null>(null);
+  const [preRegenerationMarkdown, setPreRegenerationMarkdown] = useState<string | null>(null);
 
   const leftPaneRef = useRef<HTMLDivElement>(null);
   const rightPaneRef = useRef<HTMLDivElement>(null);
@@ -128,44 +130,67 @@ export default function EditorPage() {
   async function handleRegenerateAll() {
     if (feedbackItems.length === 0 || !post || !version) return;
 
+    // Store current state for potential rollback
+    setPreRegenerationMarkdown(markdown);
+    setHasRegeneratedBefore(true);
+
     await regenerate(markdown, feedbackItems, async (newMarkdown) => {
-      // Update markdown
-      setMarkdown(newMarkdown);
+      // Store pending instead of immediately applying
+      setPendingMarkdown(newMarkdown);
 
-      // Create new version
-      const newVersionNumber = version.versionNumber + 1;
-      const newVersionId = uuidv4();
-
-      const newVersion: PostVersion = {
-        id: newVersionId,
-        postId: post.id,
-        versionNumber: newVersionNumber,
-        content: newMarkdown,
-        createdAt: Date.now(),
-        metadata: calculateMetadata(newMarkdown),
-      };
-
-      await createVersion(newVersion);
-      await updatePost({
-        ...post,
-        currentVersionId: newVersionId,
-        updatedAt: Date.now(),
-      });
-
-      setVersion(newVersion);
-      setFeedbackItems([]);
-      setFeedbackMode(false);
-
-      // Celebrate first regeneration
-      if (!hasRegeneratedBefore) {
-        confetti({
-          particleCount: 100,
-          spread: 70,
-          origin: { y: 0.6 },
-        });
-        setHasRegeneratedBefore(true);
-      }
+      // Don't create version yet - wait for confirmation
+      // Don't clear feedback items yet
     });
+  }
+
+  async function handleConfirmChanges() {
+    if (!pendingMarkdown || !version || !post) return;
+
+    // Apply the changes
+    setMarkdown(pendingMarkdown);
+
+    // Create new version
+    const newVersionNumber = version.versionNumber + 1;
+    const newVersionId = uuidv4();
+    const newVersion: PostVersion = {
+      id: newVersionId,
+      postId: post.id,
+      versionNumber: newVersionNumber,
+      content: pendingMarkdown,
+      createdAt: Date.now(),
+      metadata: calculateMetadata(pendingMarkdown),
+    };
+
+    await createVersion(newVersion);
+    await updatePost({
+      ...post,
+      currentVersionId: newVersionId,
+      updatedAt: Date.now(),
+    });
+
+    setVersion(newVersion);
+    setFeedbackItems([]);
+    setFeedbackMode(false);
+
+    // Clear pending states
+    setPendingMarkdown(null);
+    setPreRegenerationMarkdown(null);
+
+    // Celebrate first regeneration
+    if (hasRegeneratedBefore) {
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 },
+      });
+    }
+  }
+
+  function handleDenyChanges() {
+    // Discard pending changes, keep original
+    setPendingMarkdown(null);
+    setPreRegenerationMarkdown(null);
+    // markdown state unchanged
   }
 
   function handleInsertImage(imageMarkdown: string, insertOffset: number) {
@@ -190,6 +215,36 @@ export default function EditorPage() {
 
   return (
     <div className="h-screen flex flex-col bg-background">
+      {/* Confirmation Banner */}
+      {pendingMarkdown && (
+        <div className="fixed top-0 left-0 right-0 bg-accent/90 backdrop-blur-sm border-b border-border z-50 px-6 py-4">
+          <div className="max-w-7xl mx-auto flex items-center justify-between gap-4">
+            <div>
+              <p className="font-semibold text-lg">Regeneration Complete</p>
+              <p className="text-sm text-muted-foreground">
+                Review the changes below. Confirm to apply or Deny to keep original content.
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={handleDenyChanges}
+                className="border-destructive text-destructive hover:bg-destructive/10"
+              >
+                Deny Changes
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handleConfirmChanges}
+                className="gradient-shimmer"
+              >
+                Confirm Changes
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="border-b border-border px-6 py-4 flex items-center justify-between bg-muted/30">
         <div className="flex items-center gap-4">
@@ -229,9 +284,12 @@ export default function EditorPage() {
           className="w-2/5 border-r border-border overflow-y-auto p-6"
         >
           <textarea
-            value={markdown}
-            onChange={(e) => setMarkdown(e.target.value)}
-            className="w-full h-full min-h-full resize-none bg-transparent font-mono text-sm focus:outline-none text-foreground"
+            value={pendingMarkdown || markdown}
+            onChange={(e) => !pendingMarkdown && setMarkdown(e.target.value)}
+            disabled={!!pendingMarkdown}
+            className={`w-full h-full min-h-full resize-none bg-transparent font-mono text-sm focus:outline-none text-foreground ${
+              pendingMarkdown ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
             placeholder="Start writing your markdown here..."
             spellCheck={false}
           />
@@ -246,9 +304,9 @@ export default function EditorPage() {
           }`}
         >
           <PreviewPane
-            content={markdown}
-            feedbackMode={feedbackMode}
-            imageMode={imageMode}
+            content={pendingMarkdown || markdown}
+            feedbackMode={feedbackMode && !pendingMarkdown}
+            imageMode={imageMode && !pendingMarkdown}
             feedbackItems={feedbackItems}
             onAddFeedback={(item) => setFeedbackItems([...feedbackItems, item])}
             onInsertImage={handleInsertImage}
